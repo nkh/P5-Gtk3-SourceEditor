@@ -1,0 +1,51 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Gtk3 -init;
+use Getopt::Long;
+
+use SourceEditor;
+
+# --- CLI Argument Parsing ---
+my $theme_name = 'default';
+my $read_only = 0;
+my $font_size = 0;
+my $wrap_enabled = 1;
+my $filename = '';
+
+GetOptions(
+    'theme=s'     => \$theme_name,
+    'read-only'   => \$read_only,
+    'font-size=i' => \$font_size,
+    'wrap!'       => \$wrap_enabled,
+);
+
+ $filename = $ARGV[0] if @ARGV;
+
+my $theme_file = $theme_name ne 'default' ? "themes/theme_$theme_name.xml" : 'themes/default.xml';
+
+# --- Build Window ---
+my $window = Gtk3::Window->new('toplevel');
+ $window->set_title($filename || "New File");
+ $window->set_default_size(800, 600);
+ $window->signal_connect(delete_event => sub { Gtk3->main_quit(); });
+
+# --- Instantiate Editor Module ---
+my $editor = SourceEditor->new(
+    file       => $filename,
+    theme_file => $theme_file,
+    font_size  => $font_size,
+    wrap       => $wrap_enabled,
+    read_only  => $read_only,
+    window     => $window,
+    on_close   => sub {
+        my $final_text = shift;
+        print "--- WINDOW CLOSED ---\nCaptured Text:\n$final_text\n";
+        # You could write to a temp file here, pass to another module, etc.
+    }
+);
+
+# Pack the editor widget into the window and run
+ $window->add($editor->get_widget());
+ $window->show_all();
+Gtk3->main();

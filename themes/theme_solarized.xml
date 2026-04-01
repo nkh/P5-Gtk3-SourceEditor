@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<style-scheme id="theme_solarized" _name="Solarized" version="1.0">
+  <style name="text" foreground="#839496" background="#002B36"/>
+  <style name="selection" foreground="#93A1A1" background="#586E75"/>
+  <style name="current-line" background="#073642"/>
+  <style name="line-numbers" foreground="#586E75" background="#002B36"/>
+  <style name="bracket-match" foreground="#93A1A1" background="#073642"/>
+  <style name="def:keyword" foreground="#859900" bold="true"/>
+  <style name="def:string" foreground="#2AA198"/>
+  <style name="def:comment" foreground="#586E75" italic="true"/>
+  <style name="def:type" foreground="#B58900"/>
+  <style name="def:variable" foreground="#839496"/>
+  <style name="def:function" foreground="#268BD2"/>
+  <style name="def:number" foreground="#D33682"/>
+</style-scheme>

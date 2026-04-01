@@ -1,0 +1,91 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Gtk3 -init;
+use Glib ('TRUE', 'FALSE'); # REQUIRED for pack_start
+use Getopt::Long;
+use SourceEditor;
+
+# --- CLI Argument Parsing (Same as main.pl) ---
+my $theme_name = 'default';
+my $custom_colors = '';
+my $read_only = 0;
+my $font_size = 0;
+my $wrap_enabled = 1;
+my $filename = '';
+
+GetOptions(
+    'theme=s'     => \$theme_name,
+    'colors=s'    => \$custom_colors,
+    'read-only'   => \$read_only,
+    'font-size=i' => \$font_size,
+    'wrap!'       => \$wrap_enabled,
+);
+
+ $filename = $ARGV[0] if @ARGV;
+
+my $theme_file = 'themes/default.xml';
+if ($custom_colors) {
+    $theme_file = $custom_colors;
+} elsif ($theme_name ne 'default') {
+    $theme_file = "themes/theme_$theme_name.xml";
+}
+
+# --- Callback for when the dialog closes ---
+sub dialog_finished {
+    my ($status, $text_content) = @_;
+    print "--- Dialog Closed ---\n";
+    print "Status: $status\n";
+    
+    my $preview = substr($text_content, 0, 50);
+    $preview =~ s/\n/\\n/g; 
+    print "Content Preview: $preview...\n";
+    print "Total Length: " . length($text_content) . " bytes\n";
+}
+
+# Create a temporary main window (required as the parent for the dialog)
+my $main_window = Gtk3::Window->new('toplevel');
+ $main_window->signal_connect('delete_event' => sub { Gtk3->main_quit(); });
+
+# Create the Dialog. 
+# NOTE: Buttons must be passed as a flattened list, NOT an array reference!
+my $dialog = Gtk3::Dialog->new(
+    'Editor Preview',
+    $main_window,
+    'destroy-with-parent',
+    'Cancel', 'cancel'
+);
+
+ $dialog->add_button('Save', 'ok');
+ $dialog->set_default_response('ok');
+ $dialog->set_default_size(800, 600);
+
+# Instantiate the Editor Module with CLI options
+my $editor = SourceEditor->new(
+    file       => $filename,
+    theme_file => $theme_file,
+    font_size  => $font_size,
+    wrap       => $wrap_enabled,
+    read_only  => $read_only,
+    window     => $dialog
+);
+
+# Pack the editor widget into the dialog's content area
+my $content_area = $dialog->get_content_area();
+ $content_area->pack_start($editor->get_widget(), TRUE, TRUE, 0);
+
+# Intercept the dialog's response signal
+ $dialog->signal_connect('response' => sub {
+    my ($dlg, $response_id) = @_;
+    
+    my $status = ($response_id eq 'ok') ? 'ok' : 'cancel';
+    my $text = $editor->get_text();
+    
+    dialog_finished($status, $text);
+    
+    $dlg->destroy();
+    Gtk3->main_quit();
+});
+
+ $dialog->show_all();
+Gtk3->main();

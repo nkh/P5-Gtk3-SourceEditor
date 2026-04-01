@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<style-scheme id="default" _name="Default" version="1.0">
+  <style name="text" foreground="#000000" background="#FFFFFF"/>
+  <style name="selection" foreground="#FFFFFF" background="#4A90D9"/>
+  <style name="current-line" background="#F0F0F0"/>
+  <style name="line-numbers" foreground="#999999" background="#FFFFFF"/>
+  <style name="bracket-match" foreground="#000000" background="#BFBFBF"/>
+  <style name="def:keyword" foreground="#0000FF" bold="true"/>
+  <style name="def:string" foreground="#FF0000"/>
+  <style name="def:comment" foreground="#008000" italic="true"/>
+  <style name="def:type" foreground="#008080"/>
+  <style name="def:variable" foreground="#000000"/>
+  <style name="def:function" foreground="#000000"/>
+  <style name="def:number" foreground="#0000FF"/>
+</style-scheme>

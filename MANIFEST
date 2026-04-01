@@ -1,0 +1,12 @@
+Build.PL
+lib/SourceEditor.pm
+lib/ThemeManager.pm
+lib/VimBindings.pm
+MANIFEST
+README.md
+script/source-dialog-editor
+script/source-editor
+themes/default.xml
+themes/theme_dark.xml
+themes/theme_light.xml
+themes/theme_solarized.xml

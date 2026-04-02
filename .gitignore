@@ -1,0 +1,9 @@
+.env
+Build
+MYMETA.json
+MYMETA.yml
+Todo
+_build/
+blib/
+download/
+worklog.md

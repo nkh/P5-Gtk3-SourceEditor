@@ -1,0 +1,95 @@
+#!/usr/bin/perl
+# source-editor-cursor-demo - Demonstrates the on_ready callback with
+# block cursor and debug overlays.
+#
+# Usage: perl script/source-editor-cursor-demo [file]
+#
+# This script shows how to use the on_ready callback to:
+#   1. Automatically activate the block cursor (:set cursor=block)
+#   2. Draw a debug overlay (red/blue outline) around the cursor cell
+#
+# The debug overlay is toggled by pressing Ctrl-Shift-D in normal mode.
+use strict;
+use warnings;
+use Gtk3 -init;
+use Glib ('TRUE', 'FALSE');
+use Gtk3::SourceEditor;
+
+my $filename = $ARGV[0] // '';
+
+my $window = Gtk3::Window->new('toplevel');
+$window->set_title($filename || "Cursor Demo");
+$window->set_default_size(800, 600);
+$window->signal_connect(delete_event => sub { Gtk3->main_quit(); });
+
+# Shared state between on_ready and key_handler closures.
+# The key_handler needs to toggle the debug overlay, but it can't
+# access the vim context ($ctx).  We use a shared scalar instead.
+my $debug_visible = 1;  # Start with debug overlay enabled
+
+my $editor = Gtk3::SourceEditor->new(
+    file       => $filename,
+    theme_file => 'themes/theme_dark.xml',
+    font_size  => 14,
+    window     => $window,
+    # Pre-vim key handler: Ctrl-Shift-D toggles the debug overlay.
+    # Must return TRUE to consume the key, FALSE to pass to vim.
+    key_handler => sub {
+        my ($widget, $event) = @_;
+        my $k = Gtk3::Gdk::keyval_name($event->keyval) // '';
+        if ($k eq 'D' && ($event->state & 'control-mask')) {
+            $debug_visible = !$debug_visible;
+            $widget->queue_draw;
+            return TRUE;
+        }
+        return FALSE;  # pass to vim bindings
+    },
+    # on_ready callback: called after all vim initialisation is complete.
+    # Receives the vim context ($ctx) which provides access to gtk_view,
+    # mode_label, set_cursor_mode, _cursor_rect, etc.
+    on_ready => sub {
+        my ($ctx) = @_;
+        my $view = $ctx->{gtk_view};
+        return unless $view;
+
+        # 1. Activate block cursor immediately
+        if ($ctx->{set_cursor_mode}) {
+            $ctx->{set_cursor_mode}->('block');
+        }
+
+        # 2. Attach a debug draw overlay (after GTK renders text)
+        $view->signal_connect_after('draw' => sub {
+            return FALSE unless $debug_visible;
+            my ($widget, $cr) = @_;
+            return FALSE unless $ctx->{_cursor_rect};
+
+            my $r = $ctx->{_cursor_rect};
+
+            # Red inner outline (inset by 1px)
+            $cr->set_source_rgb(1.0, 0.0, 0.0);
+            $cr->set_line_width(2.0);
+            $cr->rectangle(
+                $r->{x} + 1, $r->{y} + 1,
+                $r->{width} - 2, $r->{height} - 2,
+            );
+            $cr->stroke();
+
+            # Blue outer outline (exact cell boundary)
+            $cr->set_source_rgb(0.0, 0.6, 1.0);
+            $cr->set_line_width(1.0);
+            $cr->rectangle($r->{x}, $r->{y}, $r->{width}, $r->{height});
+            $cr->stroke();
+
+            # Green dot at top-left corner
+            $cr->set_source_rgb(0.0, 1.0, 0.0);
+            $cr->arc($r->{x}, $r->{y}, 3, 0, 3.14159 * 2);
+            $cr->fill();
+
+            return FALSE;
+        });
+    },
+);
+
+$window->add($editor->get_widget());
+$window->show_all();
+Gtk3->main();

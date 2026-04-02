@@ -2,27 +2,79 @@
 use strict;
 use warnings;
 use Gtk3 -init;
-use Glib ('TRUE', 'FALSE'); # REQUIRED for pack_start
+use Glib ('TRUE', 'FALSE');
 use Getopt::Long;
-use SourceEditor;
+use Gtk3::SourceEditor;
 
-# --- CLI Argument Parsing (Same as main.pl) ---
+# --- CLI Argument Parsing ---
+my $config_file = '';
 my $theme_name = 'default';
 my $custom_colors = '';
 my $read_only = 0;
 my $font_size = 0;
 my $wrap_enabled = 1;
+my $no_line_numbers = 0;
 my $filename = '';
+my $help = 0;
+my $no_border = 0;
+my $no_buttons = 0;
+my $minimal = 0;
 
 GetOptions(
-    'theme=s'     => \$theme_name,
-    'colors=s'    => \$custom_colors,
-    'read-only'   => \$read_only,
-    'font-size=i' => \$font_size,
-    'wrap!'       => \$wrap_enabled,
+    'config|C=s'        => \$config_file,
+    'theme=s'           => \$theme_name,
+    'colors|c=s'        => \$custom_colors,
+    'read-only|r'       => \$read_only,
+    'font-size|f=i'     => \$font_size,
+    'wrap|w!'           => \$wrap_enabled,
+    'no-line-numbers|n' => \$no_line_numbers,
+    'help|h'            => \$help,
+    'no-border|b'       => \$no_border,
+    'no-buttons|B'      => \$no_buttons,
+    'minimal|m'         => \$minimal,
 );
 
- $filename = $ARGV[0] if @ARGV;
+if ($help) {
+    print <<"USAGE";
+Usage: source-dialog-editor [OPTIONS] [FILE]
+
+Options:
+  -C, --config=FILE         Load settings from a configuration file
+                              (see editor.conf for format and available keys)
+  -t, --theme=NAME           Theme name (default, dark, light, solarized)
+  -c, --colors=FILE          Path to a custom theme XML file
+  -r, --read-only            Open file in read-only mode
+  -f, --font-size=N          Set font point size
+  -w, --[no-]wrap            Enable/disable word wrap (default: on)
+  -n, --no-line-numbers      Hide line number gutter
+  -b, --no-border            Remove dialog window border/decoration
+  -B, --no-buttons           Hide Save and Cancel buttons
+  -m, --minimal              Minimal decoration (same as -b -B)
+  -h, --help                 Show this help message
+
+Configuration file settings are used as defaults.  Command-line options
+override the corresponding config file values.
+
+Runtime keyboard shortcuts (inside the editor):
+  Alt+Arrow            Move the dialog window
+  Alt+Shift+Arrow      Move dialog by 1 pixel
+  Alt+Ctrl+Arrow       Resize the dialog
+  Alt+Ctrl+Shift+Arrow Resize by 1 pixel
+  F11                  Toggle window border on/off
+  F12                  Toggle buttons on/off
+
+The dialog editor provides Vim-like modal keybindings.  Use :q to
+quit (cancel), :wq to save and quit, i/a/o to enter insert mode.
+Press Escape to return to normal mode.
+USAGE
+    exit 0;
+}
+
+$filename = $ARGV[0] if @ARGV;
+
+# -m sets both --no-border and --no-buttons
+$no_border  = 1 if $minimal;
+$no_buttons = 1 if $minimal;
 
 my $theme_file = 'themes/default.xml';
 if ($custom_colors) {
@@ -43,39 +95,105 @@ sub dialog_finished {
     print "Total Length: " . length($text_content) . " bytes\n";
 }
 
-# Create a temporary main window (required as the parent for the dialog)
 my $main_window = Gtk3::Window->new('toplevel');
- $main_window->signal_connect('delete_event' => sub { Gtk3->main_quit(); });
+$main_window->signal_connect('delete_event' => sub { Gtk3->main_quit(); });
 
-# Create the Dialog. 
-# NOTE: Buttons must be passed as a flattened list, NOT an array reference!
 my $dialog = Gtk3::Dialog->new(
     'Editor Preview',
     $main_window,
     'destroy-with-parent',
-    'Cancel', 'cancel'
 );
 
- $dialog->add_button('Save', 'ok');
- $dialog->set_default_response('ok');
- $dialog->set_default_size(800, 600);
+my $action_area;
+unless ($no_buttons) {
+    $dialog->add_button('Cancel', 'cancel');
+    $dialog->add_button('Save', 'ok');
+    $dialog->set_default_response('ok');
+}
+$action_area = $dialog->get_action_area();
+$action_area->hide() if $no_buttons;
 
-# Instantiate the Editor Module with CLI options
-my $editor = SourceEditor->new(
-    file       => $filename,
-    theme_file => $theme_file,
-    font_size  => $font_size,
-    wrap       => $wrap_enabled,
-    read_only  => $read_only,
-    window     => $dialog
+$dialog->set_default_size(800, 600);
+
+if ($no_border) {
+    $dialog->set_decorated(FALSE);
+}
+
+# Pre-vim key handler: intercept Alt+Arrow and F-keys before vim bindings.
+# Connected via key_handler option so it runs before vim mode intercepts.
+my $key_handler = sub {
+    my ($widget, $event) = @_;
+    my $k = Gtk3::Gdk::keyval_name($event->keyval) // '';
+    my $alt  = $event->state & 'mod1-mask';
+    my $ctrl = $event->state & 'control-mask';
+    my $shft = $event->state & 'shift-mask';
+
+    # Alt+Ctrl+Arrow: resize dialog
+    if ($alt && $ctrl
+        && ($k eq 'Left' || $k eq 'Right' || $k eq 'Up' || $k eq 'Down')) {
+        my ($w, $h) = $dialog->get_size;
+        my $step = $shft ? 1 : 20;
+        $w -= $step if $k eq 'Left';
+        $w += $step if $k eq 'Right';
+        $h -= $step if $k eq 'Up';
+        $h += $step if $k eq 'Down';
+        $w = 100 if $w < 100;
+        $h = 80  if $h < 80;
+        $dialog->resize($w, $h);
+        return TRUE;
+    }
+
+    # Alt+Arrow: move dialog (Shift for 1px step)
+    if ($alt && !$ctrl
+        && ($k eq 'Left' || $k eq 'Right' || $k eq 'Up' || $k eq 'Down')) {
+        my ($x, $y) = $dialog->get_position;
+        my $step = $shft ? 1 : 20;
+        $x -= $step if $k eq 'Left';
+        $x += $step if $k eq 'Right';
+        $y -= $step if $k eq 'Up';
+        $y += $step if $k eq 'Down';
+        $dialog->move($x, $y);
+        return TRUE;
+    }
+
+    # F11: toggle border
+    if ($k eq 'F11') {
+        $dialog->set_decorated(!$dialog->get_decorated);
+        return TRUE;
+    }
+
+    # F12: toggle buttons
+    if ($k eq 'F12') {
+        if ($action_area) {
+            $action_area->set_visible(!$action_area->get_visible);
+        }
+        return TRUE;
+    }
+
+    return FALSE;  # pass to vim bindings
+};
+
+# --- Build editor options hash ---
+my %editor_opts = (
+    file              => $filename,
+    theme_file        => $theme_file,
+    font_size         => $font_size,
+    wrap              => $wrap_enabled,
+    read_only         => $read_only,
+    show_line_numbers => !$no_line_numbers,
+    window            => $dialog,
+    key_handler       => $key_handler,
 );
 
-# Pack the editor widget into the dialog's content area
+# Config file is passed through; SourceEditor merges it with lower priority.
+$editor_opts{config_file} = $config_file if $config_file && -f $config_file;
+
+my $editor = Gtk3::SourceEditor->new(%editor_opts);
+
 my $content_area = $dialog->get_content_area();
- $content_area->pack_start($editor->get_widget(), TRUE, TRUE, 0);
+$content_area->pack_start($editor->get_widget(), TRUE, TRUE, 0);
 
-# Intercept the dialog's response signal
- $dialog->signal_connect('response' => sub {
+$dialog->signal_connect('response' => sub {
     my ($dlg, $response_id) = @_;
     
     my $status = ($response_id eq 'ok') ? 'ok' : 'cancel';
@@ -87,5 +205,5 @@ my $content_area = $dialog->get_content_area();
     Gtk3->main_quit();
 });
 
- $dialog->show_all();
+$dialog->show_all();
 Gtk3->main();
